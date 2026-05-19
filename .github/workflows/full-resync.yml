@@ -1,0 +1,85 @@
+name: Full resync to portfolio
+
+on:
+  workflow_dispatch:  # manual trigger only
+
+jobs:
+  resync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Software-Engineering repo
+        uses: actions/checkout@v4
+        with:
+          path: source
+
+      - name: Checkout portfolio repo
+        uses: actions/checkout@v4
+        with:
+          repository: ahadiwasti/ahadiwasti.github.io
+          token: ${{ secrets.PORTFOLIO_TOKEN }}
+          path: portfolio
+
+      - name: Clear and resync all posts
+        env:
+          GH_TOKEN: ${{ secrets.PORTFOLIO_TOKEN }}
+        run: |
+          REPO_CATEGORY="Software-Engineering"
+          REPO="ahadiwasti/Software-Engineering "
+
+          # Clear existing Software-Engineering posts
+          rm -rf portfolio/blog/posts/Software-Engineering
+          mkdir -p portfolio/blog/posts/Software-Engineering
+
+          # Sync all READMEs at least 2 levels deep
+          find source -mindepth 3 -name "README.md" | grep -v "source/.github" | while read file; do
+            RELATIVE=$(echo "$file" | sed 's|source/||' | sed 's|/README.md||')
+            DEPTH=$(echo "$RELATIVE" | tr '/' '\n' | wc -l)
+            TITLE=$(echo "$RELATIVE" | awk -F'/' '{print $NF}')
+            SUBCATEGORY=$(echo "$RELATIVE" | cut -d'/' -f1)
+
+            if [ "$DEPTH" -gt 2 ]; then
+              BREADCRUMB=$(echo "$RELATIVE" | cut -d'/' -f2-$((DEPTH-1)))
+            else
+              BREADCRUMB=""
+            fi
+
+            echo "Processing: $RELATIVE | Subcategory: $SUBCATEGORY | Breadcrumb: $BREADCRUMB"
+            # Skip if publish: false
+            if grep -q "publish: false" "$file" 2>/dev/null; then
+              echo "Skipping $RELATIVE (publish: false)"
+              continue
+            fi
+            DATES=$(python3 source/scripts/get-commit-dates.py "$REPO" "$RELATIVE" "$GH_TOKEN")
+            FIRST_DATE=$(echo $DATES | cut -d',' -f1)
+            LAST_DATE=$(echo $DATES | cut -d',' -f2)
+
+            FILENAME=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
+
+            mkdir -p "portfolio/blog/posts/$REPO_CATEGORY/$SUBCATEGORY"
+
+            {
+              echo "---"
+              echo "title: $(echo $TITLE | sed 's/-/ /g')"
+              echo "created_at: $FIRST_DATE"
+              echo "updated_at: $LAST_DATE"
+              echo "category: $REPO_CATEGORY"
+              echo "subcategory: $SUBCATEGORY"
+              if [ ! -z "$BREADCRUMB" ]; then
+                echo "breadcrumb: $BREADCRUMB"
+              fi
+              echo "---"
+              echo ""
+              cat "$file"
+            } > "portfolio/blog/posts/$REPO_CATEGORY/$SUBCATEGORY/$FIRST_DATE-$FILENAME.md"
+
+            echo "Synced: $TITLE"
+          done
+
+      - name: Commit and push
+        run: |
+          cd portfolio
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add blog/posts/
+          git diff --staged --quiet || git commit -m "full resync: Software-Engineering  posts"
+          git push

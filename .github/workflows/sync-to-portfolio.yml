@@ -1,0 +1,116 @@
+name: Sync blog posts to portfolio
+
+on:
+  push:
+    paths:
+      - '**/README.md'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Software-Engineering repo
+        uses: actions/checkout@v4
+        with:
+          path: source
+          fetch-depth: 2
+
+      - name: Checkout portfolio repo
+        uses: actions/checkout@v4
+        with:
+          repository: ahadiwasti/ahadiwasti.github.io
+          token: ${{ secrets.PORTFOLIO_TOKEN }}
+          path: portfolio
+
+      - name: Sync README files with commit dates
+        env:
+          GH_TOKEN: ${{ secrets.PORTFOLIO_TOKEN }}
+        run: |
+          REPO_CATEGORY="Software-Engineering"
+          REPO="ahadiwasti/Software-Engineering"
+
+          if git -C source rev-parse HEAD~1 >/dev/null 2>&1; then
+            CHANGED=$(git -C source diff --name-only HEAD~1 HEAD)
+          else
+            echo "First commit detected — scanning all files"
+            CHANGED=$(git -C source diff-tree --no-commit-id -r --name-only HEAD)
+          fi
+
+          echo "=== Changed files ==="
+          echo "$CHANGED"
+          echo "=== Filtered ==="
+          echo "$CHANGED" | grep -E '^.+/README\.md$'
+          echo "=== End ==="
+
+          echo "$CHANGED" | grep -E '^.+/README\.md$' | grep -v ".github" | while read file; do
+            RELATIVE=$(echo "$file" | sed 's|/README.md||')
+            DEPTH=$(echo "$RELATIVE" | tr '/' '\n' | wc -l)
+            TITLE=$(echo "$RELATIVE" | awk -F'/' '{print $NF}')
+
+            if [ "$DEPTH" -eq 1 ]; then
+              SUBCATEGORY=""
+              BREADCRUMB=""
+            elif [ "$DEPTH" -eq 2 ]; then
+              SUBCATEGORY=$(echo "$RELATIVE" | cut -d'/' -f1)
+              BREADCRUMB=""
+            else
+              SUBCATEGORY=$(echo "$RELATIVE" | cut -d'/' -f1)
+              BREADCRUMB=$(echo "$RELATIVE" | cut -d'/' -f2-$((DEPTH-1)))
+            fi
+
+            echo "Processing: $RELATIVE | Subcategory: $SUBCATEGORY | Breadcrumb: $BREADCRUMB"
+
+            # Skip if publish: false
+            if grep -q "publish: false" "source/$file" 2>/dev/null; then
+              echo "Skipping $RELATIVE (publish: false)"
+              continue
+            fi
+
+            DATES=$(python3 source/scripts/get-commit-dates.py "$REPO" "$RELATIVE" "$GH_TOKEN")
+            FIRST_DATE=$(echo $DATES | cut -d',' -f1)
+            LAST_DATE=$(echo $DATES | cut -d',' -f2)
+
+            FILENAME=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')
+
+            OUTPUT_DIR="portfolio/blog/posts/$REPO_CATEGORY"
+            if [ ! -z "$SUBCATEGORY" ]; then
+              OUTPUT_DIR="$OUTPUT_DIR/$SUBCATEGORY"
+            fi
+            mkdir -p "$OUTPUT_DIR"
+
+            {
+              echo "---"
+              echo "title: $(echo $TITLE | sed 's/-/ /g')"
+              echo "created_at: $FIRST_DATE"
+              echo "updated_at: $LAST_DATE"
+              echo "category: $REPO_CATEGORY"
+              if [ ! -z "$SUBCATEGORY" ]; then
+                echo "subcategory: $SUBCATEGORY"
+              fi
+              if [ ! -z "$BREADCRUMB" ]; then
+                echo "breadcrumb: $BREADCRUMB"
+              fi
+              echo "---"
+              echo ""
+              cat "source/$file"
+            } > "$OUTPUT_DIR/$FIRST_DATE-$FILENAME.md"
+
+            echo "Synced: $TITLE → $OUTPUT_DIR/$FIRST_DATE-$FILENAME.md"
+          done
+
+      - name: Commit and push to portfolio
+        run: |
+          cd portfolio
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add blog/posts/
+          git diff --staged --quiet || git commit -m "sync: Software-Engineering posts from Software-Engineering repo"
+          git push
+
+      - name: Trigger portfolio deploy
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.PORTFOLIO_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/ahadiwasti/ahadiwasti.github.io/dispatches \
+            -d '{"event_type":"sync-complete"}'
