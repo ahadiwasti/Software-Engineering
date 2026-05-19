@@ -96,6 +96,9 @@ jobs:
             } > "$OUTPUT_DIR/$FIRST_DATE-$FILENAME.md"
 
             echo "Synced: $TITLE → $OUTPUT_DIR/$FIRST_DATE-$FILENAME.md"
+            find "source/$(dirname $file)" -maxdepth 1 \( -name "*.gif" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webp" -o -name "*.svg" \) | while read img; do
+            cp "$img" "$OUTPUT_DIR/"
+            echo "Copied: $(basename $img)"
           done
 
       - name: Commit and push to portfolio
