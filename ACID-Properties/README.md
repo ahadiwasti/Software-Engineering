@@ -23,7 +23,7 @@ A transaction is a group of operations your database treats as one single unit. 
 1. Deduct $500 from Account A
 2. Add $500 to Account B
 
-If step 2 fails, step 1 must be undone. Otherwise $500 just disappears. That rollback behaviour — that's a transaction doing its job.
+If step 2 fails,  step 1 must be undone. Otherwise $500 just disappears. That rollback behaviour — that's a transaction doing its job.
 
 ---
 
