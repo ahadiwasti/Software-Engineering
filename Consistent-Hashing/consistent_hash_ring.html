@@ -1,0 +1,197 @@
+
+<style>
+.rbtn{cursor:pointer;padding:7px 16px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:transparent;font-size:13px;color:var(--color-text-primary);}
+.rbtn:hover{background:var(--color-background-secondary);}
+.rbtn:disabled{opacity:0.38;cursor:not-allowed;}
+.kpill{font-size:12px;padding:3px 10px;border-radius:10px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-secondary);display:inline-block;margin:3px;cursor:pointer;transition:background .15s;}
+.kpill:hover,.kpill.on{background:var(--color-background-warning);color:var(--color-text-warning);border-color:var(--color-border-warning);}
+</style>
+<h2 class="sr-only">Interactive consistent hash ring. Click a key pill to route it to a server. Use the buttons to add or remove a database node and see how little data moves.</h2>
+
+<svg id="rs" width="100%" viewBox="0 0 680 400">
+<defs>
+<marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+
+<!-- ring -->
+<circle cx="210" cy="200" r="148" fill="none" stroke="var(--color-border-secondary)" stroke-width="1.5"/>
+
+<!-- clockwise arrow hint -->
+<path d="M210 52 A148 148 0 0 1 358 200" fill="none" stroke="var(--color-border-tertiary)" stroke-width="1" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+<text class="ts" x="296" y="82" text-anchor="middle">clockwise</text>
+
+<!-- nodes drawn by JS -->
+<g id="ng"></g>
+
+<!-- routed key indicator -->
+<g id="rg" style="opacity:0;transition:opacity .25s">
+  <circle id="rdot" r="8" fill="none" stroke="#EF9F27" stroke-width="2.5"/>
+  <line id="rline" stroke="#EF9F27" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arr)"/>
+  <text id="rlabel" class="ts" fill="#BA7517" text-anchor="middle"></text>
+</g>
+
+<!-- info panel -->
+<rect x="410" y="260" width="240" height="96" rx="8" fill="var(--color-background-secondary)" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>
+<text id="it" class="th" x="530" y="296" text-anchor="middle">Click a key to route it</text>
+<text id="i1" class="ts" x="530" y="320" text-anchor="middle"></text>
+<text id="i2" class="ts" x="530" y="340" text-anchor="middle"></text>
+
+<!-- legend header -->
+<text class="th" x="415" y="52" text-anchor="start">Node positions</text>
+<g id="lg"></g>
+</svg>
+
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
+  <button class="rbtn" id="badd">+ Add DB4 at pos 65</button>
+  <button class="rbtn" id="brem" disabled>Remove DB2</button>
+  <button class="rbtn" id="bres">Reset</button>
+</div>
+<div style="margin:6px 0 2px;font-size:12px;color:var(--color-text-secondary)">Route a key:</div>
+<div id="kr"></div>
+
+<script>
+const CX=210,CY=200,R=148;
+const FILL=['#378ADD','#1D9E75','#D85A30','#7F77DD','#BA7517'];
+const TEXT=['#0C447C','#085041','#712B13','#26215C','#412402'];
+
+let nodes=[
+  {id:'DB0',pos:5},
+  {id:'DB1',pos:30},
+  {id:'DB2',pos:55},
+  {id:'DB3',pos:80},
+];
+
+const keys=[
+  {k:'key:12', pos:12},
+  {k:'key:42', pos:42},
+  {k:'key:67', pos:67},
+  {k:'key:88', pos:88},
+  {k:'key:22', pos:22},
+];
+
+function xy(pos){
+  const a=(pos/100)*Math.PI*2-Math.PI/2;
+  return [CX+R*Math.cos(a), CY+R*Math.sin(a)];
+}
+
+function clockwiseTarget(kpos){
+  const sorted=[...nodes].sort((a,b)=>a.pos-b.pos);
+  return sorted.find(n=>n.pos>kpos) || sorted[0];
+}
+
+function render(){
+  const ng=document.getElementById('ng');
+  const lg=document.getElementById('lg');
+  ng.innerHTML=''; lg.innerHTML='';
+  nodes.forEach((n,i)=>{
+    const ci=i%FILL.length;
+    const [x,y]=xy(n.pos);
+    const g=document.createElementNS('http://www.w3.org/2000/svg','g');
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',x); c.setAttribute('cy',y);
+    c.setAttribute('r',20); c.setAttribute('fill',FILL[ci]);
+    const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x',x); t.setAttribute('y',y);
+    t.setAttribute('text-anchor','middle');
+    t.setAttribute('dominant-baseline','central');
+    t.setAttribute('fill',TEXT[ci]);
+    t.setAttribute('font-size','11');
+    t.setAttribute('font-weight','500');
+    t.textContent=n.id;
+    g.appendChild(c); g.appendChild(t);
+    ng.appendChild(g);
+    // legend
+    const ly=68+i*26;
+    const lc=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    lc.setAttribute('cx',424); lc.setAttribute('cy',ly);
+    lc.setAttribute('r',7); lc.setAttribute('fill',FILL[ci]);
+    const lt=document.createElementNS('http://www.w3.org/2000/svg','text');
+    lt.setAttribute('x',438); lt.setAttribute('y',ly);
+    lt.setAttribute('dominant-baseline','central');
+    lt.setAttribute('class','ts');
+    lt.textContent=n.id+' — position '+n.pos;
+    lg.appendChild(lc); lg.appendChild(lt);
+  });
+  document.getElementById('brem').disabled=nodes.length<=2;
+}
+
+function routeKey(k){
+  const tgt=clockwiseTarget(k.pos);
+  const [kx,ky]=xy(k.pos);
+  const [tx,ty]=xy(tgt.pos);
+  // midpoint for label — offset outward slightly
+  const mx=(kx+tx)/2, my=(ky+ty)/2;
+  document.getElementById('rdot').setAttribute('cx',kx);
+  document.getElementById('rdot').setAttribute('cy',ky);
+  document.getElementById('rline').setAttribute('x1',kx);
+  document.getElementById('rline').setAttribute('y1',ky);
+  // stop arrow 22px before target center
+  const dx=tx-kx, dy=ty-ky;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  const ex=tx-dx/dist*22, ey=ty-dy/dist*22;
+  document.getElementById('rline').setAttribute('x2',ex);
+  document.getElementById('rline').setAttribute('y2',ey);
+  document.getElementById('rlabel').setAttribute('x',mx);
+  document.getElementById('rlabel').setAttribute('y',my-12);
+  document.getElementById('rlabel').textContent=k.k;
+  document.getElementById('rg').style.opacity='1';
+  document.getElementById('it').textContent=k.k+' routed to '+tgt.id;
+  document.getElementById('i1').textContent='Key lands at position '+k.pos;
+  document.getElementById('i2').textContent='Clockwise next node: '+tgt.id+' (pos '+tgt.pos+')';
+}
+
+function buildKeys(){
+  const kr=document.getElementById('kr');
+  kr.innerHTML='';
+  keys.forEach(k=>{
+    const s=document.createElement('span');
+    s.className='kpill'; s.textContent=k.k;
+    s.onclick=function(){
+      document.querySelectorAll('.kpill').forEach(p=>p.classList.remove('on'));
+      s.classList.add('on');
+      routeKey(k);
+    };
+    kr.appendChild(s);
+  });
+}
+
+function setInfo(t,l1,l2){
+  document.getElementById('it').textContent=t;
+  document.getElementById('i1').textContent=l1||'';
+  document.getElementById('i2').textContent=l2||'';
+}
+
+document.getElementById('badd').onclick=function(){
+  nodes.push({id:'DB4',pos:65});
+  this.disabled=true;
+  document.getElementById('brem').disabled=false;
+  render();
+  document.getElementById('rg').style.opacity='0';
+  document.querySelectorAll('.kpill').forEach(p=>p.classList.remove('on'));
+  setInfo('DB4 added at position 65','Only keys in range 55 to 65 moved','Everything else stayed put');
+};
+
+document.getElementById('brem').onclick=function(){
+  nodes=nodes.filter(n=>n.id!=='DB2');
+  this.disabled=true;
+  render();
+  document.getElementById('rg').style.opacity='0';
+  document.querySelectorAll('.kpill').forEach(p=>p.classList.remove('on'));
+  setInfo('DB2 removed from ring','Its keys moved clockwise to DB3','All other keys unaffected');
+};
+
+document.getElementById('bres').onclick=function(){
+  nodes=[{id:'DB0',pos:5},{id:'DB1',pos:30},{id:'DB2',pos:55},{id:'DB3',pos:80}];
+  document.getElementById('badd').disabled=false;
+  document.getElementById('brem').disabled=true;
+  document.getElementById('rg').style.opacity='0';
+  document.querySelectorAll('.kpill').forEach(p=>p.classList.remove('on'));
+  setInfo('Click a key to route it','','');
+  render();
+};
+
+render();
+buildKeys();
+</script>

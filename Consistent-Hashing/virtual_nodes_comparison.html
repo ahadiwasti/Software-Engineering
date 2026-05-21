@@ -1,0 +1,98 @@
+
+<style>
+  .vn-tab { cursor:pointer; padding:6px 18px; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); font-size:13px; background:transparent; color:var(--color-text-secondary); }
+  .vn-tab.on { background:var(--color-background-secondary); color:var(--color-text-primary); border-color:var(--color-border-primary); font-weight:500; }
+</style>
+<h2 class="sr-only">Virtual nodes comparison: without virtual nodes one server handles most load; with virtual nodes load spreads evenly.</h2>
+<div style="display:flex;gap:8px;margin-bottom:10px">
+  <button class="vn-tab on" id="tab-no">Without virtual nodes</button>
+  <button class="vn-tab" id="tab-yes">With virtual nodes</button>
+</div>
+
+<svg id="vn-svg" width="100%" viewBox="0 0 680 360">
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <circle cx="200" cy="180" r="130" fill="none" stroke="var(--color-border-secondary)" stroke-width="1.5"/>
+  <g id="vn-nodes"></g>
+  <text id="vn-desc" class="ts" x="200" y="340" text-anchor="middle"></text>
+
+  <!-- load bars -->
+  <text class="th" x="430" y="42" text-anchor="start">Load distribution</text>
+  <g id="bar-g"></g>
+</svg>
+
+<script>
+const VCX=200,VCY=180,VR=130;
+const DB_COLORS=['#378ADD','#1D9E75','#D85A30'];
+const DB_TEXT  =['#0C447C','#085041','#4A1B0C'];
+
+const WITHOUT = [
+  {id:'DB 0', vnodes:[{pos:0}],  load:62},
+  {id:'DB 1', vnodes:[{pos:38}], load:20},
+  {id:'DB 2', vnodes:[{pos:60}], load:18},
+];
+const WITH = [
+  {id:'DB 0', vnodes:[{pos:2},{pos:35},{pos:68},{pos:85}],  load:33},
+  {id:'DB 1', vnodes:[{pos:14},{pos:47},{pos:78},{pos:95}], load:34},
+  {id:'DB 2', vnodes:[{pos:22},{pos:55},{pos:62},{pos:92}], load:33},
+];
+
+function toXY2(pos){
+  const a=(pos/100)*Math.PI*2 - Math.PI/2;
+  return [VCX+VR*Math.cos(a), VCY+VR*Math.sin(a)];
+}
+
+function renderVN(data, label){
+  const g=document.getElementById('vn-nodes');
+  const bg=document.getElementById('bar-g');
+  g.innerHTML=''; bg.innerHTML='';
+  data.forEach((db,i)=>{
+    db.vnodes.forEach((vn,vi)=>{
+      const [x,y]=toXY2(vn.pos);
+      const circ=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circ.setAttribute('cx',x); circ.setAttribute('cy',y);
+      circ.setAttribute('r', db.vnodes.length>1 ? 13 : 20);
+      circ.setAttribute('fill',DB_COLORS[i]); circ.setAttribute('stroke-width',0);
+      const t=document.createElementNS('http://www.w3.org/2000/svg','text');
+      t.setAttribute('x',x); t.setAttribute('y',y);
+      t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central');
+      t.setAttribute('fill',DB_TEXT[i]);
+      t.setAttribute('font-size', db.vnodes.length>1 ? '9' : '11');
+      t.setAttribute('font-weight','500');
+      t.textContent = db.vnodes.length>1 ? `${db.id.split(' ')[1]}-${vi+1}` : db.id;
+      g.appendChild(circ); g.appendChild(t);
+    });
+
+    // bar
+    const by=60+i*60;
+    const bw=Math.round(db.load*1.6);
+    const bar=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    bar.setAttribute('x',430); bar.setAttribute('y',by);
+    bar.setAttribute('width',bw); bar.setAttribute('height',28); bar.setAttribute('rx',4);
+    bar.setAttribute('fill',DB_COLORS[i]);
+    const bl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    bl.setAttribute('x',440); bl.setAttribute('y',by+14);
+    bl.setAttribute('dominant-baseline','central'); bl.setAttribute('class','ts');
+    bl.setAttribute('fill',DB_TEXT[i]); bl.textContent=`${db.id}  ${db.load}%`;
+    bg.appendChild(bar); bg.appendChild(bl);
+  });
+  document.getElementById('vn-desc').textContent=label;
+}
+
+let mode=false;
+document.getElementById('tab-no').onclick=function(){
+  mode=false;
+  this.classList.add('on'); document.getElementById('tab-yes').classList.remove('on');
+  renderVN(WITHOUT,'Each server appears once — one large arc, uneven load');
+};
+document.getElementById('tab-yes').onclick=function(){
+  mode=true;
+  this.classList.add('on'); document.getElementById('tab-no').classList.remove('on');
+  renderVN(WITH,'Each server appears 4×, spread around the ring — load balances naturally');
+};
+
+renderVN(WITHOUT,'Each server appears once — one large arc, uneven load');
+</script>
